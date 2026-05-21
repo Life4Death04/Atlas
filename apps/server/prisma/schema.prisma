@@ -3,9 +3,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
 
 enum MuscleGroup {
   chest
@@ -39,46 +42,74 @@ enum DifficultyLevel {
   advanced
 }
 
-model User {
-  id         String    @id @default(cuid())
-  auth0Id    String    @unique
-  email      String    @unique
-  name       String?
-  avatarUrl  String?
-  routines   Routine[]
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+enum ExerciseCategory {
+  compound
+  isolation
+  cardio
+  stretching
+  plyometric
+  other
 }
 
+enum ExerciseSource {
+  exercisedb
+  custom
+}
+
+// ─── User ─────────────────────────────────────────────────────────────────────
+
+model User {
+  id              String           @id @default(cuid())
+  auth0Id         String           @unique
+  email           String           @unique
+  name            String?
+  avatarUrl       String?
+  // Schema-enforced: only one active routine per user
+  activeRoutineId String?          @unique
+  activeRoutine   Routine?         @relation("UserActiveRoutine", fields: [activeRoutineId], references: [id], onDelete: SetNull)
+  routines        Routine[]        @relation("UserRoutines")
+  sessions        WorkoutSession[]
+  personalRecords PersonalRecord[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+// ─── Exercise Library ─────────────────────────────────────────────────────────
+
 model Exercise {
-  id               String             @id @default(cuid())
+  id               String                   @id @default(cuid())
   name             String
-  description      String?
+  description      String?                  @db.Text
+  category         ExerciseCategory         @default(other)
   muscleGroup      MuscleGroup
   secondaryMuscles MuscleGroup[]
   equipment        Equipment
   difficulty       DifficultyLevel
-  instructions     String[]
-  imageUrl         String?
-  videoUrl         String?
-  externalId       String?            @unique
+  externalId       String?                  @unique
+  externalSource   ExerciseSource?
+  lastSyncedAt     DateTime?
   workoutExercises WorkoutExercise[]
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  sessionExercises WorkoutSessionExercise[]
+  personalRecords  PersonalRecord[]
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
 
   @@index([muscleGroup])
   @@index([equipment])
   @@index([difficulty])
+  @@index([category])
 }
+
+// ─── Routine System ───────────────────────────────────────────────────────────
 
 model Routine {
   id          String    @id @default(cuid())
   userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name        String
-  description String?
-  isActive    Boolean   @default(false)
+  user        User      @relation("UserRoutines", fields: [userId], references: [id], onDelete: Cascade)
+  name        String    @db.VarChar(100)
+  description String?   @db.Text
   workouts    Workout[]
+  activeFor   User?     @relation("UserActiveRoutine")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -89,10 +120,11 @@ model Workout {
   id        String            @id @default(cuid())
   routineId String
   routine   Routine           @relation(fields: [routineId], references: [id], onDelete: Cascade)
-  name      String
+  name      String            @db.VarChar(100)
   dayOfWeek Int?
   order     Int               @default(0)
   exercises WorkoutExercise[]
+  sessions  WorkoutSession[]
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 
@@ -100,18 +132,108 @@ model Workout {
 }
 
 model WorkoutExercise {
+  id               String                   @id @default(cuid())
+  workoutId        String
+  workout          Workout                  @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exerciseId       String
+  exercise         Exercise                 @relation(fields: [exerciseId], references: [id])
+  order            Int                      @default(0)
+  restSeconds      Int?
+  notes            String?                  @db.Text
+  sets             ExerciseSet[]
+  sessionExercises WorkoutSessionExercise[]
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  @@index([workoutId])
+  @@index([exerciseId])
+}
+
+// Planned set configuration — each set can have individual targets
+model ExerciseSet {
+  id                String          @id @default(cuid())
+  workoutExerciseId String
+  workoutExercise   WorkoutExercise @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade)
+  setNumber         Int
+  targetReps        Int?
+  targetWeight      Float?
+  targetRpe         Float?
+  notes             String?
+
+  @@unique([workoutExerciseId, setNumber])
+  @@index([workoutExerciseId])
+}
+
+// ─── Session System ───────────────────────────────────────────────────────────
+
+model WorkoutSession {
+  id          String                   @id @default(cuid())
+  userId      String
+  user        User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workoutId   String
+  workout     Workout                  @relation(fields: [workoutId], references: [id])
+  startedAt   DateTime                 @default(now())
+  completedAt DateTime?
+  durationSec Int?
+  notes       String?                  @db.Text
+  exercises   WorkoutSessionExercise[]
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+
+  @@index([userId])
+  @@index([workoutId])
+  @@index([userId, startedAt])
+}
+
+model WorkoutSessionExercise {
+  id                String              @id @default(cuid())
+  sessionId         String
+  session           WorkoutSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  exerciseId        String
+  exercise          Exercise            @relation(fields: [exerciseId], references: [id])
+  // Nullable: links to planned exercise but allows ad-hoc additions during a session
+  workoutExerciseId String?
+  workoutExercise   WorkoutExercise?    @relation(fields: [workoutExerciseId], references: [id], onDelete: SetNull)
+  order             Int                 @default(0)
+  notes             String?
+  sets              WorkoutSessionSet[]
+
+  @@index([sessionId])
+  @@index([exerciseId])
+}
+
+// Actual performed sets — tracks planned vs actual per set
+model WorkoutSessionSet {
+  id                String                 @id @default(cuid())
+  sessionExerciseId String
+  sessionExercise   WorkoutSessionExercise @relation(fields: [sessionExerciseId], references: [id], onDelete: Cascade)
+  setNumber         Int
+  plannedReps       Int?
+  actualReps        Int?
+  plannedWeight     Float?
+  actualWeight      Float?
+  completed         Boolean                @default(false)
+  completedAt       DateTime?
+  notes             String?
+
+  @@unique([sessionExerciseId, setNumber])
+  @@index([sessionExerciseId])
+}
+
+// ─── Progression ──────────────────────────────────────────────────────────────
+
+model PersonalRecord {
   id         String   @id @default(cuid())
-  workoutId  String
-  workout    Workout  @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   exerciseId String
   exercise   Exercise @relation(fields: [exerciseId], references: [id])
-  order      Int      @default(0)
-  sets       Int
-  reps       Int?
-  weight     Float?
-  restSeconds Int?
-  notes      String?
+  weight     Float
+  reps       Int
+  sessionId  String?
+  achievedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
 
-  @@unique([workoutId, exerciseId])
-  @@index([workoutId])
+  @@index([userId, exerciseId])
+  @@index([userId])
 }
