@@ -6,21 +6,25 @@
   "scripts": {
     "dev": "nodemon",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "lint": "eslint .",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "db:seed": "tsx src/prisma/seed.ts"
+    "db:seed": "tsx prisma/seeds/index.ts",
+    "db:test-exercises": "tsx prisma/seeds/test-exercises.ts",
+    "db:reset": "prisma migrate reset"
   },
   "dependencies": {
     "@atlas/shared": "workspace:*",
-    "@prisma/client": "^5.17.0",
+    "@prisma/adapter-pg": "^6.0.0",
+    "@prisma/client": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
     "express": "^4.19.0",
     "express-oauth2-jwt-bearer": "^1.6.0",
     "helmet": "^7.1.0",
+    "pg": "^8.13.0",
     "winston": "^3.13.0",
     "zod": "^3.23.0"
   },
@@ -28,8 +32,9 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.0",
     "nodemon": "^3.1.0",
-    "prisma": "^5.17.0",
+    "prisma": "^6.0.0",
     "tsx": "^4.16.0",
     "typescript": "^5.5.0"
   }
