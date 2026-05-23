@@ -45,8 +45,20 @@ if (!testDbUrl) {
 }
 
 // 3. Safety guard — never let tests run against the dev DB.
+//
+// This guard exists for LOCAL machines where DATABASE_URL points at a real
+// dev database. Tests TRUNCATE everything, so accidentally pointing them at
+// dev would wipe real data.
+//
+// In CI there's only one ephemeral Postgres service container (no separate
+// dev DB to protect), and DATABASE_URL is intentionally set equal to
+// TEST_DATABASE_URL so the Prisma CLI's eager `env('DATABASE_URL')` check
+// in prisma.config.ts succeeds for the `Generate Prisma client` step.
+// GitHub Actions sets `CI=true` automatically — we use that to skip the
+// guard there.
+const isCI = process.env['CI'] === 'true';
 const devDbUrl = process.env['DATABASE_URL'];
-if (devDbUrl && devDbUrl === testDbUrl) {
+if (!isCI && devDbUrl && devDbUrl === testDbUrl) {
   throw new Error(
     '[setup] TEST_DATABASE_URL is identical to DATABASE_URL. Refusing to run ' +
       'tests against the dev database (tests TRUNCATE all tables).',
