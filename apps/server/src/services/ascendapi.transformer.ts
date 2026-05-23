@@ -1,5 +1,5 @@
 import type { DifficultyLevel, Equipment, ExerciseCategory, ExerciseSource, MuscleGroup } from '../../generated/prisma/client.js';
-import { AscendExercise } from './ascendapi.client.js';
+import type { AscendExercise } from './ascendapi.client.js';
 
 // ─── Mapping tables ───────────────────────────────────────────────────────────
 

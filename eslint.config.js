@@ -1,6 +1,7 @@
 import js from '@eslint/js';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
+import globals from 'globals';
 
 /** @type {import('eslint').Linter.Config[]} */
 export default [
@@ -12,6 +13,14 @@ export default [
       parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module',
+      },
+      // Declare Node + browser globals so the `no-undef` rule (enabled by
+      // js.configs.recommended) doesn't flag `console`, `process`, `Buffer`,
+      // `window`, etc. Flat config dropped the legacy `env: { node: true }`
+      // shorthand, so we inject globals explicitly here.
+      globals: {
+        ...globals.node,
+        ...globals.browser,
       },
     },
     plugins: {
@@ -25,6 +34,6 @@ export default [
     },
   },
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/.prisma/**'],
+    ignores: ['**/dist/**', '**/node_modules/**', '**/.prisma/**', '**/generated/**'],
   },
 ];
