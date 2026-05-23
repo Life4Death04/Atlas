@@ -40,6 +40,26 @@ jobs:
     runs-on: ubuntu-latest
 
     # ───────────────────────────────────────────────────────────────────────
+    # Job-level environment
+    #
+    # `DATABASE_URL` lives here (instead of per-step) because `prisma.config.ts`
+    # eagerly evaluates `env('DATABASE_URL')` the moment the Prisma CLI boots
+    # — even for commands that don't touch the DB (like `prisma generate`).
+    # If the variable is missing, the CLI throws `PrismaConfigEnvError` before
+    # it even decides which subcommand to run.
+    #
+    # Setting it at the job level means every step inherits it automatically,
+    # so we don't have to repeat the URL on each `prisma`-touching step and
+    # can't accidentally forget it on a new one.
+    #
+    # NOTE: the test step uses a SEPARATE variable name (TEST_DATABASE_URL)
+    # on purpose — see step 9 — so the destructive truncate logic can never
+    # be aimed at the wrong DB by a stray env var.
+    # ───────────────────────────────────────────────────────────────────────
+    env:
+      DATABASE_URL: postgresql://atlas_test:atlas_test@localhost:5433/atlas_test?schema=public
+
+    # ───────────────────────────────────────────────────────────────────────
     # Service containers
     #
     # GitHub Actions can spin up sidecar containers that live for the
@@ -121,11 +141,11 @@ jobs:
 
       # 6. Apply migrations to the Postgres service.
       #
-      #    GOTCHA: Prisma's CLI reads the database URL from `DATABASE_URL`,
-      #    NOT from our `TEST_DATABASE_URL`. So we set DATABASE_URL just for
-      #    this step to point at the service container. Our application
-      #    code (and the test setup file) read TEST_DATABASE_URL — they're
-      #    distinct on purpose to avoid accidentally targeting dev.
+      #    `DATABASE_URL` is inherited from the job-level `env:` block above
+      #    (it has to be — Prisma's config file demands it at boot time).
+      #    Our application code (and the test setup file) deliberately read
+      #    a DIFFERENT variable, TEST_DATABASE_URL, so destructive test
+      #    operations can never accidentally target the dev DB.
       #
       #    Why `migrate deploy` not `migrate dev`?
       #      • `dev` is interactive and offers schema-drift prompts — useless
@@ -134,8 +154,6 @@ jobs:
       #        and is the official "production" command.
       - name: Apply migrations
         run: pnpm --filter server exec prisma migrate deploy
-        env:
-          DATABASE_URL: postgresql://atlas_test:atlas_test@localhost:5433/atlas_test?schema=public
 
       # 7. Lint. Runs eslint via the workspace script. Fails the build on
       #    any rule violation — keeps style debates out of code review.
