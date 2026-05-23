@@ -46,8 +46,13 @@ export const prisma = new PrismaClient({ adapter });
  * Called from `beforeEach` in every test file to guarantee a clean slate.
  */
 export async function truncateAll(): Promise<void> {
+  // NOTE: `pg_tables.tablename` is of PostgreSQL's internal `name` type,
+  // which Prisma's driver adapter does NOT know how to deserialize (it's
+  // not in the supported scalar whitelist). Cast to `text` so the adapter
+  // gets back a plain string and doesn't throw
+  // "Failed to deserialize column of type 'name'".
   const rows = await prisma.$queryRaw<Array<{ tablename: string }>>`
-    SELECT tablename
+    SELECT tablename::text AS tablename
     FROM pg_tables
     WHERE schemaname = 'public'
       AND tablename <> '_prisma_migrations'
