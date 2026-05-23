@@ -1,0 +1,204 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Atlas CI workflow
+#
+# This file is your learning artifact — read top to bottom. Every section is
+# annotated so you can tweak it confidently later.
+#
+# What this does:
+#   On every pull request targeting `main`, and every push to `main`, run:
+#     1. Install dependencies (pnpm)
+#     2. Generate the Prisma client (so TypeScript types exist)
+#     3. Apply migrations to a throwaway Postgres in CI
+#     4. Lint, build (typecheck), and run schema-invariant tests
+#
+# If any step fails, the PR check goes red and merging is blocked (once you
+# enable branch protection — see the notes at the bottom).
+#
+# Where to make changes:
+#   • Add a new step? Append under `steps:` in the `test` job.
+#   • Want parallel jobs (lint vs test)? Split `test` into multiple jobs and
+#     give them each `needs:` if there's an ordering dependency.
+#   • Want a Node version matrix? See the matrix example at the bottom.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: CI
+
+# `on:` declares the triggers. GitHub will start this workflow whenever one
+# of these events occurs against the listed branches.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# `jobs:` is a map of independent units of work. By default they run in
+# parallel, but right now we have just one job: `test`.
+jobs:
+  test:
+    # `ubuntu-latest` is GitHub's free-tier Linux runner. For Postgres service
+    # containers and pnpm caching it's the most battle-tested choice.
+    runs-on: ubuntu-latest
+
+    # ───────────────────────────────────────────────────────────────────────
+    # Service containers
+    #
+    # GitHub Actions can spin up sidecar containers that live for the
+    # duration of the job. We use that for Postgres so we don't have to
+    # install/configure it manually with apt-get (slower, more error prone).
+    #
+    # Why a service container vs `docker compose up`?
+    #   • GitHub manages the lifecycle (starts before steps, stops after).
+    #   • Built-in health checks — the job waits until Postgres is `ready`
+    #     before running steps.
+    #   • The runner exposes the service on `localhost:<host_port>`.
+    #
+    # Credentials MUST match docker-compose.test.yml at the repo root so
+    # local and CI behave identically. If you change one, change the other.
+    # ───────────────────────────────────────────────────────────────────────
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: atlas_test
+          POSTGRES_PASSWORD: atlas_test
+          POSTGRES_DB: atlas_test
+        ports:
+          # host:container — 5433 on the runner host maps to 5432 inside the
+          # Postgres container. We pick 5433 to match our local convention.
+          - 5433:5432
+        # Health check tells Actions when to consider the service "up".
+        # Without it, steps could try to connect before Postgres has booted.
+        options: >-
+          --health-cmd "pg_isready -U atlas_test -d atlas_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 10
+
+    # ───────────────────────────────────────────────────────────────────────
+    # Steps
+    # Steps run sequentially inside the same runner VM. Each `uses:` is a
+    # reusable Action from the marketplace; each `run:` is a shell command.
+    # ───────────────────────────────────────────────────────────────────────
+    steps:
+      # 1. Check out the repo at the commit that triggered the workflow.
+      #    Without this step, the runner has an empty workspace.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Install pnpm BEFORE setup-node so that setup-node's pnpm cache
+      #    knows which version to look for. Pinning the major version (9)
+      #    keeps CI reproducible — without pinning, a pnpm release could
+      #    silently change behavior.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      # 3. Install Node 20 LTS (matches the `engines.node` in package.json)
+      #    and enable pnpm's content-addressed store cache. The cache lives
+      #    keyed off the lockfile hash, so it only invalidates when deps
+      #    actually change.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # 4. `--frozen-lockfile` is critical for CI:
+      #      • Refuses to install if pnpm-lock.yaml is out of date
+      #      • Guarantees CI installs EXACTLY what your machine installed
+      #    Without it, transitive dep drift could cause "works on my machine"
+      #    flakiness.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 5. Generate the Prisma client BEFORE lint/build/test. Reason: our
+      #    TypeScript code imports from `generated/prisma/client.js`, which
+      #    only exists after `prisma generate`. If we skipped this, the
+      #    lint and build steps would fail on "Cannot find module".
+      - name: Generate Prisma client
+        run: pnpm --filter server db:generate
+
+      # 6. Apply migrations to the Postgres service.
+      #
+      #    GOTCHA: Prisma's CLI reads the database URL from `DATABASE_URL`,
+      #    NOT from our `TEST_DATABASE_URL`. So we set DATABASE_URL just for
+      #    this step to point at the service container. Our application
+      #    code (and the test setup file) read TEST_DATABASE_URL — they're
+      #    distinct on purpose to avoid accidentally targeting dev.
+      #
+      #    Why `migrate deploy` not `migrate dev`?
+      #      • `dev` is interactive and offers schema-drift prompts — useless
+      #        in CI where there's no human.
+      #      • `deploy` applies pending migrations only, fails fast on drift,
+      #        and is the official "production" command.
+      - name: Apply migrations
+        run: pnpm --filter server exec prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://atlas_test:atlas_test@localhost:5433/atlas_test?schema=public
+
+      # 7. Lint. Runs eslint via the workspace script. Fails the build on
+      #    any rule violation — keeps style debates out of code review.
+      - name: Lint
+        run: pnpm --filter server lint
+
+      # 8. Build. We don't ship the build artifact in CI yet, but running
+      #    `tsc` here doubles as a type-check across the entire project.
+      #    Cheaper than a separate `tsc --noEmit` step because `pnpm build`
+      #    is already wired up.
+      - name: Typecheck (via build)
+        run: pnpm --filter server build
+
+      # 9. Run the tests. The setup file inside Vitest reads
+      #    TEST_DATABASE_URL, so we provide it here. We deliberately use a
+      #    different env var name than DATABASE_URL so a misconfigured
+      #    workflow can never aim the destructive truncate at the wrong DB.
+      - name: Run tests
+        run: pnpm --filter server test
+        env:
+          TEST_DATABASE_URL: postgresql://atlas_test:atlas_test@localhost:5433/atlas_test?schema=public
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Things you may want to add later
+#
+# 1. Branch protection rules
+#    Go to GitHub → Settings → Branches → Add rule for `main`:
+#      • Require status checks: select `test` (this job's name).
+#      • Require branches to be up to date before merging.
+#    Now no PR can merge unless this workflow is green.
+#
+# 2. Caching the generated Prisma client
+#    `prisma generate` is fast but not free. You can cache
+#    `apps/server/generated` keyed off the schema.prisma hash:
+#
+#      - uses: actions/cache@v4
+#        with:
+#          path: apps/server/generated
+#          key: prisma-${{ hashFiles('apps/server/prisma/schema.prisma') }}
+#
+# 3. Matrix testing
+#    Run the suite against multiple Node versions:
+#
+#      strategy:
+#        matrix:
+#          node: [20, 22]
+#      steps:
+#        - uses: actions/setup-node@v4
+#          with: { node-version: ${{ matrix.node }} }
+#
+# 4. Splitting into parallel jobs
+#    Right now lint, build, and test all share the install step. Splitting
+#    them into separate jobs makes the longest path shorter on PRs:
+#
+#      jobs:
+#        lint: ...
+#        typecheck: ...
+#        test: ...
+#
+#    Use `actions/cache@v4` on `node_modules` to share install output, or
+#    repeat `pnpm install --frozen-lockfile` in each job.
+#
+# 5. Coverage uploads
+#    Once you add `@vitest/coverage-v8`, run with `--coverage` and upload to
+#    Codecov / Coveralls with their official Action.
+# ─────────────────────────────────────────────────────────────────────────────
