@@ -1,0 +1,64 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# .dockerignore — repo root
+#
+# Controls what is NOT sent to the Docker build daemon when building
+# apps/server/Dockerfile from the repo root as build context.
+#
+# Goal: keep context small (<50 MB), exclude secrets, exclude re-generated
+# artefacts, and exclude everything from apps/client (not part of this image).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# VCS
+.git
+.gitignore
+.gitattributes
+
+# Node / pnpm
+**/node_modules
+.pnpm-store
+
+# Build outputs — re-built inside Docker
+**/dist
+**/build
+**/coverage
+**/.turbo
+**/.cache
+
+# Prisma generated output — re-generated inside Docker
+apps/server/generated
+
+# Environment & local config — NEVER send secrets into the build context
+.env
+.env.*
+!.env.example
+
+# Editor / OS artefacts
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+*.swp
+
+# Log files
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Tests & CI artefacts — not needed inside the image
+**/*.test.ts
+**/*.spec.ts
+apps/server/tests
+docker-compose*.yml
+
+# Other apps — this Dockerfile only builds apps/server
+apps/client
+
+# Git hooks
+.husky
+
+# Documentation — keep out of context to minimise size
+*.md
+docs
+
+# SDD / tooling artefacts
+.atl
