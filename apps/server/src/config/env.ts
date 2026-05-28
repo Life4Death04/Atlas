@@ -1,14 +1,20 @@
-import { z } from 'zod';
+// ─────────────────────────────────────────────────────────────────────────────
+// Boot-time env singleton (REQ-10)
+//
+// Parses process.env via the Zod schema and exports a validated `env` object.
+// On validation failure, logs each missing/invalid field and exits non-zero.
+//
+// NOTE: dotenv/config is loaded in server.ts (the process entry point) BEFORE
+// this module is first imported. Do NOT re-import dotenv here.
+//
+// For tests that need to call parseEnv with controlled input, import directly
+// from './env.schema.js' — that module has no side effects.
+// ─────────────────────────────────────────────────────────────────────────────
 
-const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.coerce.number().default(3001),
-  DATABASE_URL: z.string().url(),
-  CLIENT_URL: z.string().url().default('http://localhost:5173'),
-  AUTH0_DOMAIN: z.string(),
-  AUTH0_AUDIENCE: z.string(),
-  ASCEND_API_BASE_URL: z.string().url().default('https://oss.exercisedb.dev/api/v1'),
-});
+export { parseEnv } from './env.schema.js';
+export type { Env } from './env.schema.js';
+
+import { envSchema } from './env.schema.js';
 
 const parsed = envSchema.safeParse(process.env);
 
