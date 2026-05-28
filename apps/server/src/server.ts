@@ -41,7 +41,7 @@ const onSignal = (sig: string): void => {
         logger.info('shutdown: complete');
         process.exit(0);
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         logger.error({ err }, 'shutdown: prisma disconnect failed');
         process.exit(1);
       });

@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction, ErrorRequestHandler } from 'express';
-import { ApiError } from '../utils/ApiError.js';
+import { ApiError } from '../shared/ApiError.js';
 import type { Logger } from '../app.js';
 
 /**

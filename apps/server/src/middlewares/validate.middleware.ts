@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { ZodSchema } from 'zod';
-import { ApiError } from '../utils/ApiError.js';
+import { ApiError } from '../shared/ApiError.js';
 
 type ValidateTarget = 'body' | 'query' | 'params';
 
