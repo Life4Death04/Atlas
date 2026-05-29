@@ -25,8 +25,15 @@ export type Logger = {
   debug: (...args: unknown[]) => void;
 };
 
+// Duck-typed minimum interface: covers what createApp actually uses, and is
+// narrow enough on parameters that real PrismaClient is structurally assignable
+// (TS function-parameter contravariance — see `server.ts` createApp call).
+// Keep this decoupled from `@prisma/client` types so app.ts stays test-friendly.
 export type PrismaLike = {
-  $queryRaw: (...args: unknown[]) => Promise<unknown>;
+  $queryRaw: <T = unknown>(
+    query: TemplateStringsArray,
+    ...values: unknown[]
+  ) => Promise<T>;
   $disconnect: () => Promise<void>;
 };
 
