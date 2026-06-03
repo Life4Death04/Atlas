@@ -37,7 +37,7 @@ export function buildErrorMiddleware(logger: Logger): ErrorRequestHandler {
  * Kept for backward compatibility with any routes that import errorMiddleware
  * directly. This will be removed in the full T-9 rewrite.
  */
-export const errorMiddleware = buildErrorMiddleware({
+export const errorMiddleware:ErrorRequestHandler = buildErrorMiddleware({
   info: () => undefined,
   warn: () => undefined,
   error: console.error.bind(console),

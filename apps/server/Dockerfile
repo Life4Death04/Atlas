@@ -51,8 +51,14 @@ COPY packages/shared/package.json ./packages/shared/
 
 # Mount the pnpm content-addressed store as a BuildKit cache. The store
 # survives across builds; packages are hard-linked, not duplicated.
+#
+# --ignore-scripts: the apps/server `postinstall` runs `prisma generate`, but
+# the Prisma schema is not copied until the source-copy step below. Skipping
+# lifecycle scripts here keeps the install layer cache-friendly; the explicit
+# `pnpm --filter server db:generate` step below handles client generation
+# once the schema is in place.
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile
+    pnpm install --frozen-lockfile --ignore-scripts
 
 # ── Source copy & Prisma generation ──────────────────────────────────────────
 # Copy the rest of the sources AFTER install to keep layer cache intact.
