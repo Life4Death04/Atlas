@@ -14,9 +14,11 @@
 
 import 'dotenv/config';
 import { env } from './config/env.js';
-import { logger } from './config/logger.js';
+import { buildLogger } from './lib/logger.js';
 import { prisma } from './config/prisma.js';
 import { createApp } from './app.js';
+
+const logger = buildLogger(env);
 
 const app = createApp({ env, logger, prisma });
 

@@ -22,7 +22,19 @@ export function buildErrorMiddleware(logger: Logger): ErrorRequestHandler {
       return;
     }
 
-    logger.error(err.message, { stack: err.stack });
+    // Minimal body-parser 413 pass-through (T-8 requirement).
+    // Full shape (code: 'PAYLOAD_TOO_LARGE', requestId) is added in T-9 (slice 3).
+    const errWithStatus = err as Error & { status?: number; type?: string };
+    if (errWithStatus.type === 'entity.too.large' || errWithStatus.status === 413) {
+      res.status(413).json({
+        error: 'Payload too large',
+        code: 'PAYLOAD_TOO_LARGE',
+        statusCode: 413,
+      });
+      return;
+    }
+
+    logger.error({ err, stack: err.stack }, err.message);
 
     res.status(500).json({
       error: 'Internal server error',
@@ -37,9 +49,9 @@ export function buildErrorMiddleware(logger: Logger): ErrorRequestHandler {
  * Kept for backward compatibility with any routes that import errorMiddleware
  * directly. This will be removed in the full T-9 rewrite.
  */
-export const errorMiddleware:ErrorRequestHandler = buildErrorMiddleware({
+export const errorMiddleware: ErrorRequestHandler = buildErrorMiddleware({
   info: () => undefined,
   warn: () => undefined,
-  error: console.error.bind(console),
+  error: (obj: unknown, msg?: string) => console.error(msg ?? obj, obj !== msg ? obj : ''),
   debug: () => undefined,
 });
