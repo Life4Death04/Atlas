@@ -45,12 +45,13 @@ describe('X-Request-Id middleware', () => {
     expect(res.status).toBe(200);
   });
 
-  it('rejects a header with printable chars outside ASCII range', async () => {
+  it('rejects a header that exceeds 128 characters', async () => {
     const app = buildTestApp();
-    // Non-printable characters (space char = 0x20 which is just at boundary; DEL = 0x7F is outside)
+    // 129-character header — exceeds the 128-char max
+    const tooLong = 'a'.repeat(129);
     const res = await request(app)
       .get('/api/health')
-      .set('X-Request-Id', '\x00invalid\x7F');
+      .set('X-Request-Id', tooLong);
 
     expect(UUID_V4.test(res.headers['x-request-id'] ?? '')).toBe(true);
   });

@@ -7,9 +7,9 @@
 // This is the test seam: supertest imports createApp() directly without
 // binding a TCP port, keeping tests fast and port-collision-free.
 //
-// Boot sequence (server.ts):
-//   loadEnv → buildLogger → buildPrismaClient → createApp(deps)
-//     → app.listen(env.PORT, env.HOST) → registerShutdownHooks(...)
+// Middleware order (design §1):
+//   helmet → cors → requestId → pinoHttp
+//     → /api router: (rateLimit → bodyParser → modules) → notFound → errorHandler
 // ─────────────────────────────────────────────────────────────────────────────
 
 import express, { type Router } from 'express';
@@ -17,6 +17,9 @@ import cors from 'cors';
 import helmet from 'helmet';
 import type { Env } from './config/env.schema.js';
 import { buildErrorMiddleware } from './middlewares/error.middleware.js';
+import { requestId } from './middlewares/request-id.middleware.js';
+import { buildRequestLogger } from './middlewares/request-logger.middleware.js';
+import { notFound } from './middlewares/not-found.middleware.js';
 import { healthModule } from './modules/health/index.js';
 
 export type Logger = {
@@ -58,17 +61,24 @@ export type Module = {
  * All middleware and module routers are mounted here. No I/O side effects.
  */
 export function createApp(deps: ModuleDeps): express.Application {
-  const { env } = deps;
+  const { env, logger } = deps;
   const app = express();
 
-  // ── Global middleware ─────────────────────────────────────────────────────
+  // ── Global middleware (REQ-6, design §6) ─────────────────────────────────
   app.use(helmet());
   app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
+
+  // requestId MUST come before pinoHttp (so customProps can read req.requestId)
+  app.use(requestId);
+
+  // pinoHttp MUST come before routes (so req.log is available in handlers)
+  app.use(buildRequestLogger(logger));
 
   // ── API router ────────────────────────────────────────────────────────────
   const apiRouter = express.Router();
 
   // Body parser — limit configurable via env (REQ-9)
+  // Mounted on the /api sub-router, not globally
   apiRouter.use(express.json({ limit: env.BODY_LIMIT }));
 
   // ── Module routers (REQ-11 — one declarative list) ────────────────────────
@@ -80,6 +90,9 @@ export function createApp(deps: ModuleDeps): express.Application {
   }
 
   app.use('/api', apiRouter);
+
+  // notFound MUST be after all routes but BEFORE the error handler
+  app.use(notFound);
 
   // ── Error handler (must be last) ──────────────────────────────────────────
   app.use(buildErrorMiddleware(deps.logger));
