@@ -20,10 +20,13 @@ import { buildErrorMiddleware } from './middlewares/error.middleware.js';
 import { healthModule } from './modules/health/index.js';
 
 export type Logger = {
-  info: (...args: unknown[]) => void;
-  warn: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
-  debug: (...args: unknown[]) => void;
+  // Pino-compatible signature: (obj, msg?) or (msg)
+  info: (obj: unknown, msg?: string) => void;
+  warn: (obj: unknown, msg?: string) => void;
+  error: (obj: unknown, msg?: string) => void;
+  debug: (obj: unknown, msg?: string) => void;
+  fatal?: (obj: unknown, msg?: string) => void;
+  child?: (bindings: Record<string, unknown>) => Logger;
 };
 
 // Duck-typed minimum interface: covers what createApp actually uses, and is

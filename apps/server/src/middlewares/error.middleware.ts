@@ -22,7 +22,7 @@ export function buildErrorMiddleware(logger: Logger): ErrorRequestHandler {
       return;
     }
 
-    logger.error(err.message, { stack: err.stack });
+    logger.error({ err, stack: err.stack }, err.message);
 
     res.status(500).json({
       error: 'Internal server error',
@@ -37,9 +37,9 @@ export function buildErrorMiddleware(logger: Logger): ErrorRequestHandler {
  * Kept for backward compatibility with any routes that import errorMiddleware
  * directly. This will be removed in the full T-9 rewrite.
  */
-export const errorMiddleware:ErrorRequestHandler = buildErrorMiddleware({
+export const errorMiddleware: ErrorRequestHandler = buildErrorMiddleware({
   info: () => undefined,
   warn: () => undefined,
-  error: console.error.bind(console),
+  error: (obj: unknown, msg?: string) => console.error(msg ?? obj, obj !== msg ? obj : ''),
   debug: () => undefined,
 });
