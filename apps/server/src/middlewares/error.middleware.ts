@@ -22,6 +22,18 @@ export function buildErrorMiddleware(logger: Logger): ErrorRequestHandler {
       return;
     }
 
+    // Minimal body-parser 413 pass-through (T-8 requirement).
+    // Full shape (code: 'PAYLOAD_TOO_LARGE', requestId) is added in T-9 (slice 3).
+    const errWithStatus = err as Error & { status?: number; type?: string };
+    if (errWithStatus.type === 'entity.too.large' || errWithStatus.status === 413) {
+      res.status(413).json({
+        error: 'Payload too large',
+        code: 'PAYLOAD_TOO_LARGE',
+        statusCode: 413,
+      });
+      return;
+    }
+
     logger.error({ err, stack: err.stack }, err.message);
 
     res.status(500).json({

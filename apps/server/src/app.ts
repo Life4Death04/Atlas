@@ -20,6 +20,7 @@ import { buildErrorMiddleware } from './middlewares/error.middleware.js';
 import { requestId } from './middlewares/request-id.middleware.js';
 import { buildRequestLogger } from './middlewares/request-logger.middleware.js';
 import { notFound } from './middlewares/not-found.middleware.js';
+import { buildRateLimit } from './middlewares/rate-limit.middleware.js';
 import { healthModule } from './modules/health/index.js';
 
 export type Logger = {
@@ -76,6 +77,11 @@ export function createApp(deps: ModuleDeps): express.Application {
 
   // ── API router ────────────────────────────────────────────────────────────
   const apiRouter = express.Router();
+
+  // Rate limiter MUST come before body parser to reject over-limit requests early.
+  // Mounted on /api sub-router so req.path is relative (R4): '/health' not '/api/health'.
+  // Health and ready paths are skipped via the rate-limit skip predicate.
+  apiRouter.use(buildRateLimit(env));
 
   // Body parser — limit configurable via env (REQ-9)
   // Mounted on the /api sub-router, not globally

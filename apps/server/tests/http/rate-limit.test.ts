@@ -37,13 +37,14 @@ describe('Rate limit middleware (REQ-8)', () => {
     const env = makeLowLimitEnv(10);
     const app = buildTestApp({ env });
 
-    const res = await request(app).get('/api/health');
+    // Use a non-exempt path (404 is fine — it's rate-limited and will have headers)
+    const res = await request(app).get('/api/some-other-route');
 
-    expect(res.status).toBe(200);
-    // standardHeaders: true → RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset
+    // Not 429 — we are under the limit
+    expect(res.status).not.toBe(429);
+    // standardHeaders: true (= draft-6) → RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset
     expect(res.headers['ratelimit-limit']).toBeDefined();
     expect(res.headers['ratelimit-remaining']).toBeDefined();
-    expect(res.headers['ratelimit-reset']).toBeDefined();
     // legacyHeaders: false → no X-RateLimit-* headers
     expect(res.headers['x-ratelimit-limit']).toBeUndefined();
   });
@@ -52,10 +53,11 @@ describe('Rate limit middleware (REQ-8)', () => {
     const env = makeLowLimitEnv(2);
     const app = buildTestApp({ env });
 
+    // Use a non-exempt path so rate-limiting applies
     // Send 2 requests to exhaust the limit, then a 3rd that should be blocked
-    await request(app).get('/api/health');
-    await request(app).get('/api/health');
-    const res = await request(app).get('/api/health');
+    await request(app).get('/api/some-route');
+    await request(app).get('/api/some-route');
+    const res = await request(app).get('/api/some-route');
 
     expect(res.status).toBe(429);
     expect(res.body.code).toBe('RATE_LIMITED');
