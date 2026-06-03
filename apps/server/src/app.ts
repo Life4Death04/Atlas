@@ -17,6 +17,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import type { Env } from './config/env.schema.js';
 import { buildErrorMiddleware } from './middlewares/error.middleware.js';
+import { healthModule } from './modules/health/index.js';
 
 export type Logger = {
   info: (...args: unknown[]) => void;
@@ -67,12 +68,13 @@ export function createApp(deps: ModuleDeps): express.Application {
   // Body parser — limit configurable via env (REQ-9)
   apiRouter.use(express.json({ limit: env.BODY_LIMIT }));
 
-  // ── Health route (temporary inline — REQ-2, REQ-12) ──────────────────────
-  // This inline route is a placeholder until T-5 extracts it to
-  // src/modules/health/ in slice 2. It satisfies REQ-2 and REQ-12 today.
-  apiRouter.get('/health', (_req, res) => {
-    res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
-  });
+  // ── Module routers (REQ-11 — one declarative list) ────────────────────────
+  // Adding a new module requires only appending to this array.
+  // No per-module imports scattered across the file.
+  const modules: Module[] = [healthModule(deps)];
+  for (const m of modules) {
+    apiRouter.use('/', m.router);
+  }
 
   app.use('/api', apiRouter);
 
