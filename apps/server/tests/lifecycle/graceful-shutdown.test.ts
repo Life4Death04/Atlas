@@ -5,17 +5,19 @@
 //   Unit:
 //     - shutdown() calls server.close, then prisma.$disconnect in order
 //     - shutdown() returns 0 on clean drain
-//     - shutdown() forced-timeout path logs warning and returns 1 (or exits 1)
+//     - shutdown() logs info with reason
 //
 //   Integration:
-//     - Child process spawned, receives SIGTERM, exits 0 within 5s
+//     - Child process spawned via node (compiled JS), receives SIGTERM, exits 0
+//     - Uses dist/src/server.js — built during T-13 or by explicit build step
 //
 // TDD: Tests written RED before shutdown() function is extracted.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { spawn } from 'node:child_process';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { spawn, execSync } from 'node:child_process';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 
 // ── Unit tests — fakes + call-order verification ─────────────────────────────
 
@@ -25,7 +27,7 @@ describe('shutdown() pure function (unit, T-10)', () => {
   let shutdown: (reason: string, deps: any) => Promise<number>;
 
   beforeEach(async () => {
-    // Dynamic import to pick up the module under test; Vitest isolates per test
+    // Dynamic import to pick up the module under test
     const mod = await import('../../src/server.js');
     shutdown = mod.shutdown;
   });
@@ -107,40 +109,38 @@ describe('shutdown() pure function (unit, T-10)', () => {
 // ── Integration test — real child process ─────────────────────────────────────
 
 describe('Graceful shutdown integration (T-10)', () => {
+  const serverRoot = path.resolve(new URL('../..', import.meta.url).pathname);
+  const distServerJs = path.join(serverRoot, 'dist', 'src', 'server.js');
+
+  beforeAll(() => {
+    // Build the server if dist doesn't exist (idempotent — tsc is a no-op if up to date)
+    if (!existsSync(distServerJs)) {
+      execSync('pnpm build', { cwd: serverRoot, stdio: 'pipe' });
+    }
+  });
+
   it('server process exits 0 after SIGTERM within 5s', async () => {
-    // The integration test spawns the compiled server (ts-node or tsx) and sends
-    // SIGTERM, then asserts it exits 0 within 5 seconds.
-    // We use tsx to run directly from source without a build step.
-
-    const serverPath = path.resolve(
-      new URL('../../src/server.ts', import.meta.url).pathname,
-    );
-
-    const envVars = {
-      ...process.env,
-      NODE_ENV: 'test',
-      PORT: '0', // port 0 to avoid conflicts (OS picks free port)
-      DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
-      DIRECT_URL: 'postgresql://test:test@localhost:5432/test',
-      AUTH0_DOMAIN: 'test.auth0.com',
-      AUTH0_AUDIENCE: 'https://test-api.example.com',
-      SHUTDOWN_TIMEOUT_MS: '3000',
-      LOG_LEVEL: 'silent',
-    };
-
-    const child = spawn(
-      'node',
-      ['--import', 'tsx/esm', serverPath],
-      {
-        env: envVars,
-        stdio: 'pipe',
+    // Spawn the compiled JS directly via node — no tsx wrapper, single process.
+    // SIGTERM goes directly to the Node process, which triggers our shutdown handler.
+    const child = spawn('node', [distServerJs], {
+      env: {
+        ...process.env,
+        NODE_ENV: 'test',
+        PORT: '3099', // specific high port to avoid conflicts in CI
+        DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
+        DIRECT_URL: 'postgresql://test:test@localhost:5432/test',
+        AUTH0_DOMAIN: 'test.auth0.com',
+        AUTH0_AUDIENCE: 'https://test-api.example.com',
+        SHUTDOWN_TIMEOUT_MS: '3000',
+        LOG_LEVEL: 'warn', // suppress info output; 'silent' is not a valid pino level in env schema
       },
-    );
+      stdio: 'pipe',
+    });
 
-    // Wait for server to boot (listen for "Server running" log or give 1s)
-    await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+    // Wait for server to boot (give it 1.5s)
+    await new Promise<void>((resolve) => setTimeout(resolve, 1500));
 
-    // Send SIGTERM
+    // Send SIGTERM to the spawned Node process
     child.kill('SIGTERM');
 
     // Assert exit 0 within 5s
