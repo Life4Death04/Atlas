@@ -87,7 +87,7 @@ const server = app.listen(env.PORT, env.HOST, () => {
 
 let shuttingDown = false;
 
-const onSignal = (sig: NodeJS.Signals): void => {
+const onSignal = (sig: string): void => {
   if (shuttingDown) return; // ignore duplicate signals
   shuttingDown = true;
 
