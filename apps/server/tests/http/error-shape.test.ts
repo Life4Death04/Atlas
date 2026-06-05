@@ -158,17 +158,20 @@ describe('Central error handler shape (T-9, REQ-7)', () => {
   // ── 5. Unknown error → 500 redacted ───────────────────────────────────────
   describe('Unknown error → 500 INTERNAL_ERROR', () => {
     it('returns 500 with redacted message and requestId', async () => {
+      // Use 'production' env to ensure no stack trace leaks the original message
       const app = buildErrorTestApp(
         () => new Error('Secret DB connection string leaked!'),
+        'production',
       );
 
       const res = await request(app).get('/error');
 
       expect(res.status).toBe(500);
       expect(res.body.code).toBe('INTERNAL_ERROR');
+      // The 'error' field must be the safe generic message, not the original
       expect(res.body.error).toBe('Internal server error');
       expect(res.body.requestId).toBe('test-request-id-123');
-      // Original error message must NOT appear in response
+      // In production, no details/stack → original message must not appear
       expect(JSON.stringify(res.body)).not.toContain('Secret DB');
     });
 

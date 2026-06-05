@@ -101,7 +101,7 @@ export function createApp(deps: ModuleDeps): express.Application {
   app.use(notFound);
 
   // ── Error handler (must be last) ──────────────────────────────────────────
-  app.use(buildErrorMiddleware(deps.logger));
+  app.use(buildErrorMiddleware(deps.logger, deps.env));
 
   return app;
 }
