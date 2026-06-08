@@ -22,13 +22,12 @@ import { existsSync } from 'node:fs';
 // ── Unit tests — fakes + call-order verification ─────────────────────────────
 
 describe('shutdown() pure function (unit, T-10)', () => {
-  // We import the shutdown function under test — it doesn't exist yet (RED)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let shutdown: (reason: string, deps: any) => Promise<number>;
+  // Import shutdown directly from the pure module — no server.ts side effects
+  let shutdown: (reason: string, deps: import('../../src/lib/shutdown.js').ShutdownDeps) => Promise<number>;
 
   beforeEach(async () => {
-    // Dynamic import to pick up the module under test
-    const mod = await import('../../src/server.js');
+    // Dynamic import of the pure shutdown module (no side effects)
+    const mod = await import('../../src/lib/shutdown.js');
     shutdown = mod.shutdown;
   });
 
@@ -55,9 +54,9 @@ describe('shutdown() pure function (unit, T-10)', () => {
     };
 
     const result = await shutdown('SIGTERM', {
-      server: fakeServer,
+      server: fakeServer as unknown as import('node:http').Server,
       prisma: fakePrisma,
-      logger: fakeLogger,
+      logger: fakeLogger as unknown as import('../../src/lib/shutdown.js').ShutdownDeps['logger'],
       timeoutMs: 5000,
     });
 
@@ -75,9 +74,9 @@ describe('shutdown() pure function (unit, T-10)', () => {
     const fakeLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
     const result = await shutdown('SIGINT', {
-      server: fakeServer,
+      server: fakeServer as unknown as import('node:http').Server,
       prisma: fakePrisma,
-      logger: fakeLogger,
+      logger: fakeLogger as unknown as import('../../src/lib/shutdown.js').ShutdownDeps['logger'],
       timeoutMs: 5000,
     });
 
@@ -92,9 +91,9 @@ describe('shutdown() pure function (unit, T-10)', () => {
     const fakeLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
     await shutdown('SIGTERM', {
-      server: fakeServer,
+      server: fakeServer as unknown as import('node:http').Server,
       prisma: fakePrisma,
-      logger: fakeLogger,
+      logger: fakeLogger as unknown as import('../../src/lib/shutdown.js').ShutdownDeps['logger'],
       timeoutMs: 5000,
     });
 

@@ -48,6 +48,6 @@ export function isPrismaKnownError(err: unknown): err is PrismaErrorLike {
     err instanceof Error &&
     err.name === 'PrismaClientKnownRequestError' &&
     typeof (err as PrismaErrorLike).code === 'string' &&
-    (err as PrismaErrorLike).code.startsWith('P')
+    (err as PrismaErrorLike).code.startsWith('P2')
   );
 }
