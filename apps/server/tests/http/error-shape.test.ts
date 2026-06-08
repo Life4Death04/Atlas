@@ -14,7 +14,7 @@
 // TDD: Tests written RED before T-9 error handler rewrite.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import { z } from 'zod';
@@ -202,6 +202,66 @@ describe('Central error handler shape (T-9, REQ-7)', () => {
       const hasStack = res.body.details && res.body.details.stack;
       expect(hasStack).toBeFalsy();
     });
+  });
+});
+
+// ── 6. 5xx ApiError logging contract (C1 — design §7) ────────────────────────
+// Design contract: 5xx ApiError → logger.error; 4xx ApiError → logger.warn
+// This test verifies that a 500 ApiError triggers logger.error (NOT logger.warn).
+describe('ApiError 5xx logging contract (C1)', () => {
+  it('calls logger.error (not logger.warn) for 500 ApiError', async () => {
+    const env = makeEnv('test');
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    const app = express();
+    app.use((req, _res, next) => {
+      (req as express.Request & { requestId: string }).requestId = 'test-request-id-c1';
+      next();
+    });
+    app.get('/error', (_req, _res, next) => {
+      next(new ApiError(500, 'INTERNAL_ERROR', 'Something went wrong internally'));
+    });
+    app.use(buildErrorMiddleware(logger as unknown as ReturnType<typeof pino>, env));
+
+    const res = await request(app).get('/error');
+
+    expect(res.status).toBe(500);
+    expect(res.body.code).toBe('INTERNAL_ERROR');
+    // 5xx → logger.error must be called
+    expect(logger.error).toHaveBeenCalledOnce();
+    // logger.warn must NOT be called for a 500
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('calls logger.warn (not logger.error) for 422 ApiError (4xx)', async () => {
+    const env = makeEnv('test');
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    const app = express();
+    app.use((req, _res, next) => {
+      (req as express.Request & { requestId: string }).requestId = 'test-request-id-c1b';
+      next();
+    });
+    app.get('/error', (_req, _res, next) => {
+      next(new ApiError(422, 'UNPROCESSABLE', 'Bad input'));
+    });
+    app.use(buildErrorMiddleware(logger as unknown as ReturnType<typeof pino>, env));
+
+    const res = await request(app).get('/error');
+
+    expect(res.status).toBe(422);
+    // 4xx → logger.warn must be called
+    expect(logger.warn).toHaveBeenCalledOnce();
+    // logger.error must NOT be called for a 4xx
+    expect(logger.error).not.toHaveBeenCalled();
   });
 });
 
