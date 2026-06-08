@@ -14,7 +14,7 @@
 // TDD: Tests written RED before shutdown() function is extracted.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 import { spawn, execSync } from 'node:child_process';
 import type http from 'node:http';
 import path from 'node:path';
@@ -32,6 +32,12 @@ describe('shutdown() pure function (unit, T-10)', () => {
     // Dynamic import of the pure shutdown module (no side effects)
     const mod = await import('../../src/lib/shutdown.js');
     shutdown = mod.shutdown;
+  });
+
+  afterEach(() => {
+    // Restore real timers and any spies after each test to prevent leakage
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('calls server.close() then prisma.$disconnect() in order', async () => {
@@ -105,6 +111,74 @@ describe('shutdown() pure function (unit, T-10)', () => {
     const firstCallArg = fakeLogger.info.mock.calls[0];
     const logObj = firstCallArg[0];
     expect(logObj).toMatchObject({ reason: 'SIGTERM' });
+  });
+
+  // ── W-1 coverage-gap fix: REQ-4 drain-timeout → exit 1 ─────────────────────
+  //
+  // Scenario: in-flight requests never drain (server.close callback is never
+  // invoked). The forceExit timer fires after timeoutMs and calls process.exit(1).
+  //
+  // Implementation note: in the timeout path, process.exit(1) fires from inside
+  // the setTimeout callback while shutdown() is still suspended on the
+  // `await server.close(...)` promise. Therefore prisma.$disconnect is NEVER
+  // called before the forced exit — the await never resolves.
+  //
+  // Technique: vi.useFakeTimers() + vi.advanceTimersByTimeAsync() to trigger the
+  // timer deterministically without real wall-clock delay.
+  // vi.spyOn(process, 'exit') is mocked to a no-op (returns undefined cast as
+  // never) so it does not kill the Vitest process. The spy is asserted after
+  // advancing timers — no need to await the shutdown() promise because it is
+  // intentionally still pending (server.close never resolves in this scenario).
+  //
+  it('calls process.exit(1) when drain times out (REQ-4 scenario 2, W-1)', async () => {
+    vi.useFakeTimers();
+
+    // Spy on process.exit: no-op so the timer callback does not kill the Vitest
+    // process. Cast return type as `never` to satisfy the TS overload.
+    const exitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((_code?: number) => undefined as never);
+
+    // server.close that NEVER invokes its callback — simulates hung connections
+    const fakeServer = {
+      close: vi.fn((_cb?: () => void) => {
+        // deliberately do not call _cb — drain never completes
+      }),
+    };
+
+    const fakePrisma = { $disconnect: vi.fn(async () => undefined) };
+    const fakeLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+    const timeoutMs = 10;
+
+    // Start shutdown() concurrently — it will hang on the server.close promise
+    // because the fake server never resolves the drain. We intentionally do NOT
+    // await it here; the timeout timer is what we are testing.
+    void shutdown('SIGTERM', {
+      server: fakeServer as unknown as http.Server,
+      prisma: fakePrisma,
+      logger: fakeLogger as unknown as ShutdownDeps['logger'],
+      timeoutMs,
+    });
+
+    // Advance fake timers past the drain timeout. This fires the forceExit
+    // setTimeout callback synchronously within the async tick, which calls
+    // our mocked process.exit(1) (recorded by the spy without exiting).
+    await vi.advanceTimersByTimeAsync(timeoutMs + 1);
+
+    // Core assertion: forced exit was called with code 1
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(exitSpy).toHaveBeenCalledOnce();
+
+    // Design §10 / implementation truth: prisma.$disconnect is NOT called in
+    // the timeout path because the await on server.close never resolves before
+    // process.exit(1) fires from the timer.
+    expect(fakePrisma.$disconnect).not.toHaveBeenCalled();
+
+    // The drain-timeout warning log must be emitted before force-exit
+    expect(fakeLogger.warn).toHaveBeenCalledOnce();
+    const warnArgs = fakeLogger.warn.mock.calls[0];
+    expect(warnArgs[0]).toMatchObject({ timeoutMs });
   });
 });
 
