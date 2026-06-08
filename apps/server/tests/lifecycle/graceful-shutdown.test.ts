@@ -16,15 +16,17 @@
 
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { spawn, execSync } from 'node:child_process';
+import type http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
+import type { ShutdownDeps } from '../../src/lib/shutdown.js';
 
 // ── Unit tests — fakes + call-order verification ─────────────────────────────
 
 describe('shutdown() pure function (unit, T-10)', () => {
   // Import shutdown directly from the pure module — no server.ts side effects
-  let shutdown: (reason: string, deps: import('../../src/lib/shutdown.js').ShutdownDeps) => Promise<number>;
+  let shutdown: (reason: string, deps: ShutdownDeps) => Promise<number>;
 
   beforeEach(async () => {
     // Dynamic import of the pure shutdown module (no side effects)
@@ -55,9 +57,9 @@ describe('shutdown() pure function (unit, T-10)', () => {
     };
 
     const result = await shutdown('SIGTERM', {
-      server: fakeServer as unknown as import('node:http').Server,
+      server: fakeServer as unknown as http.Server,
       prisma: fakePrisma,
-      logger: fakeLogger as unknown as import('../../src/lib/shutdown.js').ShutdownDeps['logger'],
+      logger: fakeLogger as unknown as ShutdownDeps['logger'],
       timeoutMs: 5000,
     });
 
@@ -75,9 +77,9 @@ describe('shutdown() pure function (unit, T-10)', () => {
     const fakeLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
     const result = await shutdown('SIGINT', {
-      server: fakeServer as unknown as import('node:http').Server,
+      server: fakeServer as unknown as http.Server,
       prisma: fakePrisma,
-      logger: fakeLogger as unknown as import('../../src/lib/shutdown.js').ShutdownDeps['logger'],
+      logger: fakeLogger as unknown as ShutdownDeps['logger'],
       timeoutMs: 5000,
     });
 
@@ -92,9 +94,9 @@ describe('shutdown() pure function (unit, T-10)', () => {
     const fakeLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
     await shutdown('SIGTERM', {
-      server: fakeServer as unknown as import('node:http').Server,
+      server: fakeServer as unknown as http.Server,
       prisma: fakePrisma,
-      logger: fakeLogger as unknown as import('../../src/lib/shutdown.js').ShutdownDeps['logger'],
+      logger: fakeLogger as unknown as ShutdownDeps['logger'],
       timeoutMs: 5000,
     });
 
