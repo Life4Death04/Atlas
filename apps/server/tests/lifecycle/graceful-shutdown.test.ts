@@ -144,19 +144,27 @@ describe('Graceful shutdown integration (T-10)', () => {
     // This replaces the fixed 1.5s sleep — the test only unblocks when the server
     // is truly listening, making it reliable on both fast and slow CI machines.
     // A 5s hard timeout prevents the test from hanging if the line is never emitted.
+    // CONV-2: On reject path, kill the child to prevent port-holding orphan (EADDRINUSE).
+    // CONV-3: Named listener removed on settle to avoid data listener leak for child lifetime.
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
+        // CONV-2: Kill orphan child before rejecting — prevents EADDRINUSE in next CI run.
+        child.kill('SIGKILL');
         reject(new Error('Server did not emit SERVER_READY within 5 seconds'));
       }, 5000);
 
       let buffer = '';
-      child.stdout?.on('data', (chunk: Buffer) => {
+      // CONV-3: Named function so we can remove it after the Promise settles.
+      const onData = (chunk: Buffer): void => {
         buffer += chunk.toString();
         if (buffer.includes('SERVER_READY')) {
+          // CONV-3: Remove listener and clear timeout before resolving.
+          child.stdout?.off('data', onData);
           clearTimeout(timeout);
           resolve();
         }
-      });
+      };
+      child.stdout?.on('data', onData);
     });
 
     // Send SIGTERM to the spawned Node process
