@@ -17,6 +17,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { spawn, execSync } from 'node:child_process';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 
 // ── Unit tests — fakes + call-order verification ─────────────────────────────
@@ -108,7 +109,8 @@ describe('shutdown() pure function (unit, T-10)', () => {
 // ── Integration test — real child process ─────────────────────────────────────
 
 describe('Graceful shutdown integration (T-10)', () => {
-  const serverRoot = path.resolve(new URL('../..', import.meta.url).pathname);
+  // S14: use fileURLToPath instead of .pathname — Windows-safe path resolution
+  const serverRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
   const distServerJs = path.join(serverRoot, 'dist', 'src', 'server.js');
 
   beforeAll(() => {
@@ -136,8 +138,24 @@ describe('Graceful shutdown integration (T-10)', () => {
       stdio: 'pipe',
     });
 
-    // Wait for server to boot (give it 1.5s)
-    await new Promise<void>((resolve) => setTimeout(resolve, 1500));
+    // S6: Wait for the server to emit 'SERVER_READY' on stdout before sending SIGTERM.
+    // This replaces the fixed 1.5s sleep — the test only unblocks when the server
+    // is truly listening, making it reliable on both fast and slow CI machines.
+    // A 5s hard timeout prevents the test from hanging if the line is never emitted.
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Server did not emit SERVER_READY within 5 seconds'));
+      }, 5000);
+
+      let buffer = '';
+      child.stdout?.on('data', (chunk: Buffer) => {
+        buffer += chunk.toString();
+        if (buffer.includes('SERVER_READY')) {
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+    });
 
     // Send SIGTERM to the spawned Node process
     child.kill('SIGTERM');

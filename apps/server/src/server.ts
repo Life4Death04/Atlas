@@ -27,6 +27,9 @@ const app = createApp({ env, logger, prisma });
 
 const server = app.listen(env.PORT, env.HOST, () => {
   logger.info(`Server running on ${env.HOST}:${env.PORT} [${env.NODE_ENV}]`);
+  // Emit a machine-readable ready line for integration test stdout listeners (S6).
+  // Printed unconditionally — harmless in production, essential for CI test stability.
+  process.stdout.write('SERVER_READY\n');
 });
 
 // ── Signal wiring ─────────────────────────────────────────────────────────────
