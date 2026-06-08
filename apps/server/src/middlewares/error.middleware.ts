@@ -37,7 +37,12 @@ export function buildErrorMiddleware(logger: Logger, env: Env): ErrorRequestHand
 
     // ── 1. ApiError — passthrough ───────────────────────────────────────────
     if (err instanceof ApiError) {
-      logger.warn({ code: err.code, requestId, method, url }, err.message);
+      // Design §7: 5xx → logger.error (on-call alerting); 4xx → logger.warn (expected errors)
+      if (err.statusCode >= 500) {
+        logger.error({ err, requestId, method, url }, err.message);
+      } else {
+        logger.warn({ code: err.code, requestId, method, url }, err.message);
+      }
       res.status(err.statusCode).json({
         error: err.message,
         code: err.code,
@@ -94,6 +99,11 @@ export function buildErrorMiddleware(logger: Logger, env: Env): ErrorRequestHand
 
     // ── 5. Fallback — unknown error ────────────────────────────────────────
     const unknownErr = err instanceof Error ? err : new Error(String(err));
+    // NOTE (Info #12): unknownErr.message is logged raw and may contain secrets
+    // (e.g. DB connection strings in thrown Error messages). The logger SINK is
+    // responsible for secret scrubbing. Operators MUST configure their log
+    // pipeline (e.g. Datadog, Loki) with appropriate redaction rules for
+    // sensitive patterns before this reaches persistent storage.
     logger.error({ err: unknownErr, requestId, method, url }, unknownErr.message);
 
     res.status(500).json({
