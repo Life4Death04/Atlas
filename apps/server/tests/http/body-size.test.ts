@@ -3,14 +3,11 @@
 //
 // Tests:
 //   - Small JSON body is accepted normally
-//   - Oversized body returns 413
+//   - Oversized body returns 413 with PAYLOAD_TOO_LARGE code and requestId
 //
-// NOTE: The full 413 error-shape assertion (code: 'PAYLOAD_TOO_LARGE') is deferred
-// to T-9 (error handler rewrite in slice 3). For this slice, we only assert the
-// status code. See TODO below.
-//
-// TDD: RED written first — rate-limit middleware must be mounted and body-size
+// TDD: RED written first (T-8) — rate-limit middleware must be mounted and body-size
 // limit wired in the /api router before this can pass.
+// T-9 unlocked full error-shape assertions (code + requestId).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, it, expect } from 'vitest';
@@ -67,10 +64,7 @@ describe('Body size limit middleware (REQ-9)', () => {
       .send(oversizedBody);
 
     expect(res.status).toBe(413);
-
-    // TODO(T-9): Once the error handler rewrite is in place (slice 3), add:
-    // expect(res.body.code).toBe('PAYLOAD_TOO_LARGE');
-    // expect(res.body.requestId).toBeDefined();
-    // For now, only assert the status code — the error shape comes from T-9.
+    expect(res.body.code).toBe('PAYLOAD_TOO_LARGE');
+    expect(res.body.requestId).toBeDefined();
   });
 });

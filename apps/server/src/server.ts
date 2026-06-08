@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Server entry point — process lifecycle owner.
+// Server entry point — process lifecycle owner (T-10, REQ-4, design §10)
 //
 // Responsibilities (and ONLY these):
 //   1. Load environment variables (dotenv — must be first)
@@ -17,6 +17,10 @@ import { env } from './config/env.js';
 import { buildLogger } from './lib/logger.js';
 import { prisma } from './config/prisma.js';
 import { createApp } from './app.js';
+import { shutdown } from './lib/shutdown.js';
+import { emitServerReady } from './lib/server-ready.js';
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
 
 const logger = buildLogger(env);
 
@@ -24,30 +28,30 @@ const app = createApp({ env, logger, prisma });
 
 const server = app.listen(env.PORT, env.HOST, () => {
   logger.info(`Server running on ${env.HOST}:${env.PORT} [${env.NODE_ENV}]`);
+  // Emit a machine-readable ready line for integration test stdout listeners (S6).
+  // Gated on non-production to keep production stdout clean NDJSON (REQ-5, CONV-1).
+  emitServerReady(env, process.stdout);
 });
 
-// ── Graceful shutdown ─────────────────────────────────────────────────────────
-// Full shutdown() pure function will be implemented in T-10 (slice 2).
-// This stub handles SIGTERM/SIGINT and ensures clean shutdown for now.
+// ── Signal wiring ─────────────────────────────────────────────────────────────
 
 let shuttingDown = false;
 
 const onSignal = (sig: string): void => {
-  if (shuttingDown) return;
+  if (shuttingDown) return; // ignore duplicate signals
   shuttingDown = true;
-  logger.info({ sig }, 'shutdown: received signal, stopping server');
 
-  server.close(() => {
-    prisma.$disconnect()
-      .then(() => {
-        logger.info('shutdown: complete');
-        process.exit(0);
-      })
-      .catch((err: unknown) => {
-        logger.error({ err }, 'shutdown: prisma disconnect failed');
-        process.exit(1);
-      });
-  });
+  shutdown(sig, {
+    server,
+    prisma,
+    logger,
+    timeoutMs: env.SHUTDOWN_TIMEOUT_MS,
+  })
+    .then((code) => process.exit(code))
+    .catch((err: unknown) => {
+      logger.error({ err }, 'shutdown: unexpected error');
+      process.exit(1);
+    });
 };
 
 process.on('SIGTERM', onSignal);
