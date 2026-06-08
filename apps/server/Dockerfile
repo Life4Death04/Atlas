@@ -64,11 +64,14 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 # Copy the rest of the sources AFTER install to keep layer cache intact.
 COPY . .
 
-# prisma.config.ts eagerly evaluates env('DATABASE_URL') at CLI boot, even for
-# non-DB commands. A placeholder value is sufficient — it is discarded after
-# `prisma generate` and is never present in the runtime image.
+# prisma.config.ts eagerly evaluates env('DATABASE_URL') and env('DIRECT_URL')
+# at CLI boot, even for non-DB commands. Placeholder values are sufficient —
+# they are discarded after `prisma generate` and never present in the runtime
+# image.
 ARG DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder
 ENV DATABASE_URL=${DATABASE_URL}
+ARG DIRECT_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder
+ENV DIRECT_URL=${DIRECT_URL}
 
 # Generate the Prisma client targeting Debian OpenSSL 3.x (matches node:20-slim
 # Bookworm). Output lands at apps/server/generated/prisma (per schema.prisma).
