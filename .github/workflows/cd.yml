@@ -122,3 +122,4 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder
+            DIRECT_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder

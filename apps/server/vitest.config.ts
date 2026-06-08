@@ -1,31 +1,30 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Vitest configuration for the Atlas server package.
 //
-// Why these choices:
+// Why two projects:
+//   • "unit" project — env/config, HTTP (supertest), lib tests — no DB needed.
+//     No setupFiles; runs pnpm test for fast feedback without a Postgres server.
+//
+//   • "integration" project — schema/ tests that TRUNCATE real DB rows.
+//     Keeps setupFiles: ['tests/setup.ts'] which validates TEST_DATABASE_URL,
+//     runs `prisma migrate deploy`, and loads `.env.test`.
+//
+// Other choices:
 //   • pool: 'forks' + singleFork: true
-//       Database tests share a single Postgres instance and TRUNCATE between
-//       tests. Running them in parallel forks/threads would cause cross-test
-//       contamination (one test wiping data while another inserts). A single
-//       fork keeps everything serial and predictable.
+//       DB tests share a single Postgres instance. Serial execution prevents
+//       cross-test contamination.
 //
 //   • globals: false
-//       We import `describe`, `it`, `expect`, etc. explicitly. This keeps the
-//       test files honest about their dependencies and plays nicely with
-//       TypeScript NodeNext module resolution.
+//       We import describe/it/expect explicitly. Keeps test files honest and
+//       compatible with TypeScript NodeNext module resolution.
 //
 //   • testTimeout: 30000
-//       DB tests have to wait for Postgres connections, migrations, and
-//       cascading deletes. 30s is generous but avoids flakiness on slower
-//       CI runners.
+//       DB tests wait for Postgres + migrations; 30s avoids flakiness on slow CI.
 //
-//   • setupFiles: ['tests/setup.ts']
-//       Runs once per test process — validates env, runs `prisma migrate
-//       deploy` against the test DB, and loads `.env.test` so local dev
-//       doesn't need to export TEST_DATABASE_URL manually.
-//
-//   • include: ['tests/**/*.test.ts']
-//       Keeps tests isolated under `tests/` so they never collide with
-//       production code or Prisma's generated files.
+//   • include patterns
+//       Unit:        tests/config/**, tests/http/**, tests/lib/**, tests/lifecycle/**,
+//                   tests/structure/**
+//       Integration: tests/schema/**
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { defineConfig } from 'vitest/config';
@@ -34,8 +33,6 @@ export default defineConfig({
   test: {
     globals: false,
     testTimeout: 30000,
-    setupFiles: ['tests/setup.ts'],
-    include: ['tests/**/*.test.ts'],
     pool: 'forks',
     poolOptions: {
       forks: {
@@ -45,5 +42,33 @@ export default defineConfig({
     // Surface console.log output during tests so the verbose traces we add
     // actually show up — Vitest hides logs by default unless a test fails.
     silent: false,
+    projects: [
+      {
+        // ── Unit / HTTP / lib tests (no DB required) ──────────────────────
+        test: {
+          name: 'unit',
+          include: [
+            'tests/config/**/*.test.ts',
+            'tests/http/**/*.test.ts',
+            'tests/lib/**/*.test.ts',
+            'tests/lifecycle/**/*.test.ts',
+            'tests/structure/**/*.test.ts',
+            'tests/helpers/**/*.test.ts',
+          ],
+          // Lightweight setup: loads .env.test vars so any transitive import
+          // of src/config/env.ts (boot-time singleton) doesn't call process.exit.
+          // NO database migrations — these tests use mock prisma.
+          setupFiles: ['tests/setup-unit.ts'],
+        },
+      },
+      {
+        // ── Integration tests (DB required) ──────────────────────────────
+        test: {
+          name: 'integration',
+          include: ['tests/schema/**/*.test.ts'],
+          setupFiles: ['tests/setup.ts'],
+        },
+      },
+    ],
   },
 });
