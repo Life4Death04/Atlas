@@ -1,9 +1,9 @@
-import type { JWTPayload } from 'express-oauth2-jwt-bearer';
+import type { AuthResult } from 'express-oauth2-jwt-bearer';
 
 declare global {
   namespace Express {
     interface Request {
-      auth?: JWTPayload;
+      auth?: AuthResult;
       /** Correlation ID — set by requestId middleware on every request. */
       requestId: string;
     }
