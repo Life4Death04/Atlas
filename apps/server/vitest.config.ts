@@ -52,6 +52,7 @@ export default defineConfig({
             'tests/http/**/*.test.ts',
             'tests/lib/**/*.test.ts',
             'tests/lifecycle/**/*.test.ts',
+            'tests/middlewares/**/*.test.ts',
             'tests/structure/**/*.test.ts',
             'tests/helpers/**/*.test.ts',
           ],
