@@ -16,6 +16,7 @@ import express from 'express';
 import pino from 'pino';
 import type { ModuleDeps } from '../../src/app.js';
 import { parseEnv } from '../../src/config/env.schema.js';
+import { TEST_PUBLIC_KEY } from '../helpers/auth.js';
 
 // The fake module — this file doesn't exist yet (RED)
 import { fakeModule } from '../fixtures/fake-module/index.js';
@@ -33,6 +34,7 @@ function makeTestDeps(): ModuleDeps {
       CLIENT_URL: 'http://localhost:5173',
       AUTH0_DOMAIN: 'test.auth0.com',
       AUTH0_AUDIENCE: 'https://test-api.example.com',
+      TEST_JWT_PUBLIC_KEY: TEST_PUBLIC_KEY,
     }),
     logger: pino({ level: 'silent' }),
     prisma: { $queryRaw: async () => [], $disconnect: async () => undefined },

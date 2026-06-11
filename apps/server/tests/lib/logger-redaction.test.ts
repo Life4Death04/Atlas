@@ -13,6 +13,7 @@ import { describe, it, expect } from 'vitest';
 import { Writable } from 'node:stream';
 import { buildLogger } from '../../src/lib/logger.js';
 import { parseEnv } from '../../src/config/env.schema.js';
+import { TEST_PUBLIC_KEY } from '../helpers/auth.js';
 
 /** Create an env for testing with given overrides */
 function makeEnv(overrides: Record<string, string> = {}) {
@@ -25,6 +26,8 @@ function makeEnv(overrides: Record<string, string> = {}) {
     CLIENT_URL: 'http://localhost:5173',
     AUTH0_DOMAIN: 'test.auth0.com',
     AUTH0_AUDIENCE: 'https://test-api.example.com',
+    // REQ-13 — required for NODE_ENV=test
+    TEST_JWT_PUBLIC_KEY: TEST_PUBLIC_KEY,
     ...overrides,
   });
 }

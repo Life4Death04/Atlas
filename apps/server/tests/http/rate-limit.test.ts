@@ -13,6 +13,7 @@ import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { buildTestApp } from '../helpers/app.js';
 import { parseEnv } from '../../src/config/env.schema.js';
+import { TEST_PUBLIC_KEY } from '../helpers/auth.js';
 
 /** Small env with low rate-limit for testing */
 function makeLowLimitEnv(max: number) {
@@ -27,6 +28,8 @@ function makeLowLimitEnv(max: number) {
     AUTH0_AUDIENCE: 'https://test-api.example.com',
     RATE_LIMIT_WINDOW_MS: '60000',
     RATE_LIMIT_MAX: String(max),
+    // REQ-13 — required for NODE_ENV=test
+    TEST_JWT_PUBLIC_KEY: TEST_PUBLIC_KEY,
   });
 }
 

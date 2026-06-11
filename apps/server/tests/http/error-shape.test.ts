@@ -22,6 +22,7 @@ import { buildTestApp } from '../helpers/app.js';
 import { ApiError } from '../../src/shared/ApiError.js';
 import { buildErrorMiddleware } from '../../src/middlewares/error.middleware.js';
 import { parseEnv } from '../../src/config/env.schema.js';
+import { TEST_PUBLIC_KEY } from '../helpers/auth.js';
 import pino from 'pino';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -37,6 +38,8 @@ function makeEnv(nodeEnv: 'development' | 'test' | 'production' = 'test') {
     CLIENT_URL: 'http://localhost:5173',
     AUTH0_DOMAIN: 'test.auth0.com',
     AUTH0_AUDIENCE: 'https://test-api.example.com',
+    // REQ-13 — required for NODE_ENV=test
+    ...(nodeEnv === 'test' ? { TEST_JWT_PUBLIC_KEY: TEST_PUBLIC_KEY } : {}),
   });
 }
 
@@ -279,6 +282,8 @@ describe('Error handler integration: 413 body-too-large (T-8 + T-9)', () => {
       AUTH0_DOMAIN: 'test.auth0.com',
       AUTH0_AUDIENCE: 'https://test-api.example.com',
       BODY_LIMIT: '1kb',
+      // REQ-13 — required for NODE_ENV=test
+      TEST_JWT_PUBLIC_KEY: TEST_PUBLIC_KEY,
     });
     const app = buildTestApp({ env });
 

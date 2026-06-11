@@ -28,6 +28,19 @@ export const envSchema = z
     RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
     BODY_LIMIT: z.string().default('1mb'),
+    // TEST_JWT_PUBLIC_KEY — RS256 public key for local JWT validation in test env.
+    // Optional at the schema level; the superRefine below enforces it in NODE_ENV=test.
+    TEST_JWT_PUBLIC_KEY: z.string().optional(),
+  })
+  .superRefine((raw, ctx) => {
+    // REQ-13 — Fail-fast: test env MUST supply TEST_JWT_PUBLIC_KEY.
+    if (raw.NODE_ENV === 'test' && (raw.TEST_JWT_PUBLIC_KEY == null || raw.TEST_JWT_PUBLIC_KEY.trim() === '')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['TEST_JWT_PUBLIC_KEY'],
+        message: 'TEST_JWT_PUBLIC_KEY is required when NODE_ENV=test',
+      });
+    }
   })
   .transform((raw) => ({
     ...raw,

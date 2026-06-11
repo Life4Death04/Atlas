@@ -14,6 +14,10 @@
 import { describe, it, expect } from 'vitest';
 import { parseEnv } from '../../src/config/env.schema.js';
 
+// Placeholder PEM — structure valid for schema validation; not used for real crypto here.
+const TEST_PEM_STUB =
+  '-----BEGIN PUBLIC KEY-----\nMFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAMock\n-----END PUBLIC KEY-----\n';
+
 const validBase = {
   NODE_ENV: 'test',
   PORT: '3001',
@@ -30,6 +34,8 @@ const validBase = {
   RATE_LIMIT_WINDOW_MS: '60000',
   RATE_LIMIT_MAX: '100',
   BODY_LIMIT: '1mb',
+  // REQ-13 — required for NODE_ENV=test
+  TEST_JWT_PUBLIC_KEY: TEST_PEM_STUB,
 };
 
 describe('parseEnv', () => {
@@ -97,8 +103,7 @@ describe('parseEnv', () => {
   });
 
   it('accepts valid env when NODE_ENV=test and TEST_JWT_PUBLIC_KEY is provided', () => {
-    const stubKey = '-----BEGIN PUBLIC KEY-----\nMFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAMock\n-----END PUBLIC KEY-----\n';
-    const input = { ...validBase, NODE_ENV: 'test', TEST_JWT_PUBLIC_KEY: stubKey };
+    const input = { ...validBase, NODE_ENV: 'test', TEST_JWT_PUBLIC_KEY: TEST_PEM_STUB };
     expect(() => parseEnv(input)).not.toThrow();
   });
 

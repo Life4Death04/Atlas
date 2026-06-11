@@ -43,6 +43,7 @@ describe('GET /api/ready', () => {
       $disconnect: vi.fn().mockResolvedValue(undefined),
     };
     const { parseEnv } = await import('../../src/config/env.schema.js');
+    const { TEST_PUBLIC_KEY: testPubKey } = await import('../helpers/auth.js');
     const testEnv = parseEnv({
       NODE_ENV: 'test',
       PORT: '3001',
@@ -53,6 +54,8 @@ describe('GET /api/ready', () => {
       AUTH0_DOMAIN: 'test.auth0.com',
       AUTH0_AUDIENCE: 'https://test-api.example.com',
       READINESS_DB_TIMEOUT_MS: '10',
+      // REQ-13 — required for NODE_ENV=test
+      TEST_JWT_PUBLIC_KEY: testPubKey,
     });
 
     const app = buildTestApp({ prisma: mockPrisma as never, env: testEnv });

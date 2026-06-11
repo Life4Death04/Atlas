@@ -14,6 +14,7 @@ import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { buildTestApp } from '../helpers/app.js';
 import { parseEnv } from '../../src/config/env.schema.js';
+import { TEST_PUBLIC_KEY } from '../helpers/auth.js';
 
 /** Env with a small body limit for testing */
 function makeSmallBodyEnv() {
@@ -27,6 +28,8 @@ function makeSmallBodyEnv() {
     AUTH0_DOMAIN: 'test.auth0.com',
     AUTH0_AUDIENCE: 'https://test-api.example.com',
     BODY_LIMIT: '1kb',
+    // REQ-13 — required for NODE_ENV=test
+    TEST_JWT_PUBLIC_KEY: TEST_PUBLIC_KEY,
   });
 }
 
