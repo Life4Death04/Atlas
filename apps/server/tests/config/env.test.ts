@@ -1,10 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Env schema contract tests (REQ-10)
+// Env schema contract tests (REQ-10, REQ-13)
 //
 // These tests validate that the Zod env schema:
 //   1. Exits non-zero (throws) when DATABASE_URL is missing
 //   2. Exits non-zero (throws) when LOG_LEVEL has an invalid value
 //   3. Parses a complete valid env and returns typed values (PORT as number)
+//   4. (REQ-13) Fails-fast naming TEST_JWT_PUBLIC_KEY when NODE_ENV=test and key is absent
 //
 // Because env.ts exits the process on failure, we test the parseEnv() exported
 // function directly so we can control the input without side-effects.
@@ -81,5 +82,29 @@ describe('parseEnv', () => {
     delete (input as Record<string, unknown>)['HOST'];
     const result = parseEnv(input);
     expect(result.HOST).toBe('0.0.0.0');
+  });
+
+  // ── REQ-13 — Env-driven auth factory fail-fast ────────────────────────────
+  it('throws naming TEST_JWT_PUBLIC_KEY when NODE_ENV=test and key is absent', () => {
+    const input = { ...validBase, NODE_ENV: 'test' };
+    delete (input as Record<string, unknown>)['TEST_JWT_PUBLIC_KEY'];
+    expect(() => parseEnv(input)).toThrow(/TEST_JWT_PUBLIC_KEY/);
+  });
+
+  it('throws naming TEST_JWT_PUBLIC_KEY when NODE_ENV=test and key is empty string', () => {
+    const input = { ...validBase, NODE_ENV: 'test', TEST_JWT_PUBLIC_KEY: '' };
+    expect(() => parseEnv(input)).toThrow(/TEST_JWT_PUBLIC_KEY/);
+  });
+
+  it('accepts valid env when NODE_ENV=test and TEST_JWT_PUBLIC_KEY is provided', () => {
+    const stubKey = '-----BEGIN PUBLIC KEY-----\nMFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAMock\n-----END PUBLIC KEY-----\n';
+    const input = { ...validBase, NODE_ENV: 'test', TEST_JWT_PUBLIC_KEY: stubKey };
+    expect(() => parseEnv(input)).not.toThrow();
+  });
+
+  it('accepts valid env when NODE_ENV=development without TEST_JWT_PUBLIC_KEY', () => {
+    const input = { ...validBase, NODE_ENV: 'development' };
+    delete (input as Record<string, unknown>)['TEST_JWT_PUBLIC_KEY'];
+    expect(() => parseEnv(input)).not.toThrow();
   });
 });
